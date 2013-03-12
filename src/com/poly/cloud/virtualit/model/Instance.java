@@ -54,6 +54,11 @@ public class Instance {
 	 * The name of the security group of the instance
 	 */
 	private String securityGroupName;
+	
+	/**
+	 * The id of the security group of the instance
+	 */
+	private String securityGroupID;
 
 	/**
 	 * The key pair for the instance . note we have the key material stored here

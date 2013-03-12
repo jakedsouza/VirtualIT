@@ -5,6 +5,9 @@ import java.util.logging.Level;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
 
+import com.amazonaws.services.ec2.model.KeyPair;
+import com.poly.cloud.virtualit.utils.AWSUtils;
+
 
 
 public class TestStuff {
@@ -17,11 +20,12 @@ public class TestStuff {
 		LogManager.getLogManager().getLogger(Logger.GLOBAL_LOGGER_NAME).setLevel(Level.FINE);  	
 		
 		AWSUtils instance = new AWSUtils() ;
-		instance.createSecurityGroup("test name 2","test name 2");
-		instance.createKeyPair("test name 2");
-		System.out.println(instance.createNewInstance("test name 2", "test name 2"));
-		
-		
+	//	System.out.println(instance.createSecurityGroup("test name 3","test name 3"));
+		//instance.createSecurityGroup("deleteme","deleteme");
+	//	instance.createKeyPair("deleteme");
+	//	String instanceid = instance.createNewInstance("deleteme","deleteme");
+		instance.createImage("i-957480e7","img11");
+		instance.createSnapshot("i-957480e7", "snap");
 	}
 
 }
