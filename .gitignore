@@ -1,3 +1,5 @@
+/bin/AwsCredentials.properties
+/src/AwsCredentials.properties
 *.class
 
 # Package Files #
