@@ -283,5 +283,10 @@ public class AWSUtils {
 		}
 		return volumeID;
 	}
+	
+	//TODO Mihir 
+	public void getInstanceMetrics(String instanceID){	
+		
+	}
 
 }
