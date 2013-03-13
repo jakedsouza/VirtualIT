@@ -19,6 +19,10 @@ import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.PropertiesCredentials;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2Client;
+import com.amazonaws.services.ec2.model.AllocateAddressRequest;
+import com.amazonaws.services.ec2.model.AllocateAddressResult;
+import com.amazonaws.services.ec2.model.AssociateAddressRequest;
+import com.amazonaws.services.ec2.model.AssociateAddressResult;
 import com.amazonaws.services.ec2.model.AuthorizeSecurityGroupIngressRequest;
 import com.amazonaws.services.ec2.model.BundleInstanceRequest;
 import com.amazonaws.services.ec2.model.CreateImageRequest;
@@ -36,6 +40,7 @@ import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.DescribeInstancesResult;
 import com.amazonaws.services.ec2.model.DescribeVolumesRequest;
 import com.amazonaws.services.ec2.model.DescribeVolumesResult;
+import com.amazonaws.services.ec2.model.DisassociateAddressRequest;
 import com.amazonaws.services.ec2.model.Image;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.InstanceType;
@@ -65,6 +70,10 @@ public class AWSUtils {
 	private static AmazonEC2 ec2;
 	AWSCredentials credentials = null;
 
+	public AWSUtils() {
+	 init();
+	}
+
 	public void init() {
 		if (ec2 != null) {
 			return;
@@ -73,7 +82,7 @@ public class AWSUtils {
 				log.info("Loading Credentials file ");
 				credentials = new PropertiesCredentials(
 						AWSUtils.class
-						.getResourceAsStream("/AwsCredentials.properties"));
+								.getResourceAsStream("/AwsCredentials.properties"));
 			} catch (IOException e) {
 				log.info("Error Loading credentials file");
 				e.printStackTrace();
@@ -100,7 +109,7 @@ public class AWSUtils {
 			String securityGroupDescription) {
 		log.info("Creating new security group with name " + securityGroupName);
 
-		init();
+		//init();
 
 		String createdSecurityGroupID = null;
 		boolean securityGroupExists = false;
@@ -124,10 +133,10 @@ public class AWSUtils {
 					.createSecurityGroup(createSecurityGroupRequest);
 			createdSecurityGroupID = createSecurityGroupResult.getGroupId();
 			AuthorizeSecurityGroupIngressRequest ingressRequest = new AuthorizeSecurityGroupIngressRequest()
-			.withIpPermissions(
-					new IpPermission().withIpProtocol("tcp")
-					.withFromPort(0).withToPort(65535)
-					.withIpRanges(ALL_ACCESS_IP_RANGE))
+					.withIpPermissions(
+							new IpPermission().withIpProtocol("tcp")
+									.withFromPort(0).withToPort(65535)
+									.withIpRanges(ALL_ACCESS_IP_RANGE))
 					.withGroupName(securityGroupName);
 			ec2.authorizeSecurityGroupIngress(ingressRequest);
 			log.info("security group " + securityGroupName
@@ -153,7 +162,7 @@ public class AWSUtils {
 	 *         rename it . not sure
 	 */
 	public KeyPair createKeyPair(String keyName) {
-		init();
+		//init();
 		KeyPair keyPair = null;
 		log.info("Creating a new keyPair with name " + keyName);
 		boolean keyPairExists = false;
@@ -166,7 +175,7 @@ public class AWSUtils {
 		}
 		if (!keyPairExists) {
 			CreateKeyPairRequest keyPairRequest = new CreateKeyPairRequest()
-			.withKeyName(keyName);
+					.withKeyName(keyName);
 			keyPair = ec2.createKeyPair(keyPairRequest).getKeyPair();
 
 			Path target = Paths.get(keyName);
@@ -195,6 +204,7 @@ public class AWSUtils {
 		return keyPair;
 	}
 
+	 // ---------------------Instance related code ----------------------------
 	/**
 	 * Creates an instance . If imageID is null , a new instance is created with
 	 * a default ami .
@@ -206,7 +216,8 @@ public class AWSUtils {
 	 */
 	public String createInstance(String keyName, String securityGroupName,
 			String imageID) {
-		init();
+		//init();
+		log.info("Creating instance");
 		RunInstancesRequest runInstancesRequest = new RunInstancesRequest();
 		runInstancesRequest.setInstanceType(InstanceType.T1Micro);
 		runInstancesRequest.setMinCount(1);
@@ -224,7 +235,10 @@ public class AWSUtils {
 					.asList(securityGroupName));
 		}
 		RunInstancesResult result = ec2.runInstances(runInstancesRequest);
-		return result.getReservation().getInstances().get(0).getInstanceId();
+		String instanceID = result.getReservation().getInstances().get(0)
+				.getInstanceId();
+		log.info("Done creating new instance : " + instanceID);
+		return instanceID;
 	}
 
 	/**
@@ -233,9 +247,11 @@ public class AWSUtils {
 	 * @param instanceId
 	 */
 	public void deleteInstance(String instanceId) {
-		init();
+		//init();
+		log.info("Terminating instance " + instanceId);
 		ec2.terminateInstances(new TerminateInstancesRequest()
-		.withInstanceIds(instanceId));
+				.withInstanceIds(instanceId));
+		log.info("Done terminating instance " + instanceId);
 	}
 
 	/**
@@ -244,9 +260,11 @@ public class AWSUtils {
 	 * @param instanceId
 	 */
 	public void stopInstance(String instanceId) {
-		init();
+		//init();
+		log.info("Stopping instance " + instanceId);
 		ec2.stopInstances(new StopInstancesRequest()
-		.withInstanceIds(instanceId));
+				.withInstanceIds(instanceId));
+		log.info("Done stopping instance " + instanceId);
 	}
 
 	/**
@@ -255,11 +273,15 @@ public class AWSUtils {
 	 * @param instanceId
 	 */
 	public void startInstance(String instanceId) {
-		init();
+		//init();
+		log.info("Starting instance " + instanceId);
 		ec2.startInstances(new StartInstancesRequest()
-		.withInstanceIds(instanceId));
+				.withInstanceIds(instanceId));
+		log.info("Done starting instance " + instanceId);
 	}
 
+	
+	//----------------------------Image and snapshot related code --------------------------
 	/**
 	 * Creates an EBS backed image of an instance
 	 * 
@@ -270,11 +292,15 @@ public class AWSUtils {
 	 * @return the new imageID of the created image
 	 */
 	public String createImage(String instanceId, String name) {
-		init();
+		//init();		
+		log.info("Creating new image of instance " + instanceId
+				+ " with image name : " + name);
 		CreateImageRequest request = new CreateImageRequest();
 		request.setInstanceId(instanceId);
 		request.setName(name);
 		CreateImageResult result = ec2.createImage(request);
+		log.info("Done creating new image of instance " + instanceId
+				+ " with image name : " + name);
 		return result.getImageId();
 	}
 
@@ -300,19 +326,22 @@ public class AWSUtils {
 	 * @return the snapshot ID of the snapshot
 	 */
 	public String createSnapshotFromVolumeID(String volumeID, String description) {
-		init();
+		//init();
+		log.info("Creating new snapshot of volume " + volumeID);
 		CreateSnapshotRequest request = new CreateSnapshotRequest();
 		request.setVolumeId(volumeID);
 		request.setDescription(description);
 		CreateSnapshotResult result = ec2.createSnapshot(request);
+		log.info("Done creating new snapshot of volume " + volumeID);
 		return result.getSnapshot().getSnapshotId();
 	}
 
 	public void deleteImage(String imageID, boolean deleteSnapshot) {
 		// Get the image from imageID
-		init();
+		//init();
+		log.info("Deleting image " + imageID);
 		DescribeImagesRequest describeImagesRequest = new DescribeImagesRequest()
-		.withImageIds(imageID);
+				.withImageIds(imageID);
 		DescribeImagesResult describeImagesResult = ec2
 				.describeImages(describeImagesRequest);
 		Image image = describeImagesResult.getImages().get(0);
@@ -323,12 +352,15 @@ public class AWSUtils {
 					.getSnapshotId();
 			deleteSnapShot(snapshotID);
 		}
+		log.info("Done image " + imageID);
 	}
 
 	public void deleteSnapShot(String snapshotID) {
-		init();
+		//init();
+		log.info("Deleting snapshot " + snapshotID);
 		DeleteSnapshotRequest request = new DeleteSnapshotRequest(snapshotID);
-		ec2.deleteSnapshot(request);		 
+		ec2.deleteSnapshot(request);
+		log.info("Done deleting snapshot " + snapshotID);
 	}
 
 	public void attachVolumeToInstance() {
@@ -339,10 +371,10 @@ public class AWSUtils {
 
 	}
 
-	public void generateLoad(String isntanceID){
-		
+	public void generateLoad(String isntanceID) {
+
 	}
-	
+
 	public String getVolumeIDFromInstanceID(String instanceID) {
 		List<Volume> volumes = ec2.describeVolumes().getVolumes();
 		String volumeID = null;
@@ -360,6 +392,34 @@ public class AWSUtils {
 	// TODO Mihir
 	public void getInstanceMetrics(String instanceID) {
 
+	}
+
+	// Elastic IP related code
+
+	public String alocateIP() {
+		log.info("Allocating new Ip address");
+		AllocateAddressResult elasticResult = ec2.allocateAddress();
+		String elasticIp = elasticResult.getPublicIp();
+		log.info("New Ip Address is : " + elasticIp);
+		return elasticIp;
+	}
+
+	public void associateIp(String elasticIp, String instanceId) {
+		log.info("Associating ip : " + elasticIp + " to instance : "
+				+ instanceId);
+		AssociateAddressRequest aar = new AssociateAddressRequest()
+				.withInstanceId(instanceId).withPublicIp(elasticIp);
+		AssociateAddressResult result = ec2.associateAddress(aar);
+		log.info("Finished associating ip : " + elasticIp + " to instance : "
+				+ instanceId);
+	}
+
+	public void disassociateIp(String elasticIp) {
+		log.info("Disassociating ip : " + elasticIp);
+		DisassociateAddressRequest dar = new DisassociateAddressRequest();
+		dar.setPublicIp(elasticIp);
+		ec2.disassociateAddress(dar);
+		log.info("Finished disassociating ip : " + elasticIp);
 	}
 
 }
