@@ -28,10 +28,15 @@ import com.amazonaws.services.ec2.model.CreateSecurityGroupRequest;
 import com.amazonaws.services.ec2.model.CreateSecurityGroupResult;
 import com.amazonaws.services.ec2.model.CreateSnapshotRequest;
 import com.amazonaws.services.ec2.model.CreateSnapshotResult;
+import com.amazonaws.services.ec2.model.DeleteSnapshotRequest;
+import com.amazonaws.services.ec2.model.DeregisterImageRequest;
+import com.amazonaws.services.ec2.model.DescribeImagesRequest;
+import com.amazonaws.services.ec2.model.DescribeImagesResult;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.DescribeInstancesResult;
 import com.amazonaws.services.ec2.model.DescribeVolumesRequest;
 import com.amazonaws.services.ec2.model.DescribeVolumesResult;
+import com.amazonaws.services.ec2.model.Image;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.InstanceType;
 import com.amazonaws.services.ec2.model.IpPermission;
@@ -51,8 +56,8 @@ import com.amazonaws.services.ec2.model.VolumeAttachment;
 public class AWSUtils {
 	private static final Logger log = Logger
 			.getLogger(AWSUtils.class.getName());
-	 static final String SECURITY_GROUP_NAME = "Assignment1SecurityGroup";
-	 static final String SECURITY_GROUP_DESCRIPTION = "Security group for assignment 1";
+	static final String SECURITY_GROUP_NAME = "Assignment1SecurityGroup";
+	static final String SECURITY_GROUP_DESCRIPTION = "Security group for assignment 1";
 	private static final String KEY_PAIR_NAME = "Assignment1KeyPair";
 	private static final String ALL_ACCESS_IP_RANGE = "0.0.0.0/0";
 	private static final String DEFAULT_IMAGE_ID = "ami-76f0061f";
@@ -137,16 +142,19 @@ public class AWSUtils {
 	}
 
 	/**
-	 * Creates a new key pair and also creates the private key file . 
-	 * If the key pair exists , nothing is done and returns null
-	 * @param keyName
-	 * @return {@link KeyPair} the keyPair created null if the key pair already exists . 
+	 * Creates a new key pair and also creates the private key file . If the key
+	 * pair exists , nothing is done and returns null
 	 * 
-	 * TODO may need to delete keypair if it already exists or may be rename it . not sure 
+	 * @param keyName
+	 * @return {@link KeyPair} the keyPair created null if the key pair already
+	 *         exists .
+	 * 
+	 *         TODO may need to delete keypair if it already exists or may be
+	 *         rename it . not sure
 	 */
 	public KeyPair createKeyPair(String keyName) {
 		init();
-		KeyPair keyPair = null ;
+		KeyPair keyPair = null;
 		log.info("Creating a new keyPair with name " + keyName);
 		boolean keyPairExists = false;
 		List<KeyPairInfo> existingKeyPairs = ec2.describeKeyPairs()
@@ -184,109 +192,174 @@ public class AWSUtils {
 			log.info("Key pair " + keyName
 					+ " already exists not creating new one");
 		}
-		return keyPair ;
+		return keyPair;
 	}
 
 	/**
-	 * Creates an instance . 
-	 * If imageID is null , a new instance is created with a default ami .
+	 * Creates an instance . If imageID is null , a new instance is created with
+	 * a default ami .
+	 * 
 	 * @param keyName
 	 * @param securityGroupName
 	 * @param imageID
-	 * @return instanceID  the instanceID of the instance created.
+	 * @return instanceID the instanceID of the instance created.
 	 */
-	public String createInstance(String keyName, String securityGroupName,String imageID) {
-		init();				
+	public String createInstance(String keyName, String securityGroupName,
+			String imageID) {
+		init();
 		RunInstancesRequest runInstancesRequest = new RunInstancesRequest();
 		runInstancesRequest.setInstanceType(InstanceType.T1Micro);
 		runInstancesRequest.setMinCount(1);
 		runInstancesRequest.setMaxCount(1);
-		
-		if(imageID == null){
-			imageID = DEFAULT_IMAGE_ID ;
+
+		if (imageID == null) {
+			imageID = DEFAULT_IMAGE_ID;
 			runInstancesRequest.setImageId(imageID);
 		}
-		if(keyName != null ){
+		if (keyName != null) {
 			runInstancesRequest.setKeyName(keyName);
 		}
-		if(securityGroupName == null ){
-			runInstancesRequest.setSecurityGroups(Arrays.asList(securityGroupName));
-		}		
+		if (securityGroupName == null) {
+			runInstancesRequest.setSecurityGroups(Arrays
+					.asList(securityGroupName));
+		}
 		RunInstancesResult result = ec2.runInstances(runInstancesRequest);
 		return result.getReservation().getInstances().get(0).getInstanceId();
 	}
 
+	/**
+	 * Deletes the instance with the given instance id
+	 * 
+	 * @param instanceId
+	 */
 	public void deleteInstance(String instanceId) {
 		init();
 		ec2.terminateInstances(new TerminateInstancesRequest()
 		.withInstanceIds(instanceId));
 	}
 
+	/**
+	 * Stops the instance with the given instance ID
+	 * 
+	 * @param instanceId
+	 */
 	public void stopInstance(String instanceId) {
 		init();
 		ec2.stopInstances(new StopInstancesRequest()
 		.withInstanceIds(instanceId));
 	}
 
+	/**
+	 * Starts the instance with the given instance ID
+	 * 
+	 * @param instanceId
+	 */
 	public void startInstance(String instanceId) {
 		init();
 		ec2.startInstances(new StartInstancesRequest()
 		.withInstanceIds(instanceId));
 	}
 
-	public String createImage(String instanceId,String name ){
-	 init(); 	 
-     CreateImageRequest request = new CreateImageRequest();
-	 request.setInstanceId(instanceId);
-	 request.setName(name);
-	 CreateImageResult result = ec2.createImage(request);
-	 return result.getImageId() ; 
+	/**
+	 * Creates an EBS backed image of an instance
+	 * 
+	 * @param instanceId
+	 *            The instance id of which the image is to be made
+	 * @param name
+	 *            The Name of the image
+	 * @return the new imageID of the created image
+	 */
+	public String createImage(String instanceId, String name) {
+		init();
+		CreateImageRequest request = new CreateImageRequest();
+		request.setInstanceId(instanceId);
+		request.setName(name);
+		CreateImageResult result = ec2.createImage(request);
+		return result.getImageId();
 	}
-	
-	public String createSnapshot(String instanceID ,String description) {
+
+	/**
+	 * Creates a snapshot of the root volume of a specific instance
+	 * 
+	 * @param instanceID
+	 * @param description
+	 * @return the snapshot ID of the snapshot
+	 */
+	public String createSnapshotFromInstanceID(String instanceID,
+			String description) {
+		String volumeId = getVolumeIDFromInstanceID(instanceID);
+		String snapshotID = createSnapshotFromVolumeID(volumeId, description);
+		return snapshotID;
+	}
+
+	/**
+	 * Creates a snapshot of a specific volume given the volumeID
+	 * 
+	 * @param volumeID
+	 * @param description
+	 * @return the snapshot ID of the snapshot
+	 */
+	public String createSnapshotFromVolumeID(String volumeID, String description) {
 		init();
 		CreateSnapshotRequest request = new CreateSnapshotRequest();
-		String volumeId = getVolumeIDFromInstanceID(instanceID) ;
-		request.setVolumeId(volumeId);
+		request.setVolumeId(volumeID);
 		request.setDescription(description);
 		CreateSnapshotResult result = ec2.createSnapshot(request);
 		return result.getSnapshot().getSnapshotId();
 	}
 
-	public void deleteImage(String imageID){
+	public void deleteImage(String imageID, boolean deleteSnapshot) {
+		// Get the image from imageID
+		init();
+		DescribeImagesRequest describeImagesRequest = new DescribeImagesRequest()
+		.withImageIds(imageID);
+		DescribeImagesResult describeImagesResult = ec2
+				.describeImages(describeImagesRequest);
+		Image image = describeImagesResult.getImages().get(0);
+		ec2.deregisterImage(new DeregisterImageRequest(imageID));
+		// Get the snapshotID
+		if (deleteSnapshot) {
+			String snapshotID = image.getBlockDeviceMappings().get(0).getEbs()
+					.getSnapshotId();
+			deleteSnapShot(snapshotID);
+		}
+	}
+
+	public void deleteSnapShot(String snapshotID) {
+		init();
+		DeleteSnapshotRequest request = new DeleteSnapshotRequest(snapshotID);
+		ec2.deleteSnapshot(request);		 
+	}
+
+	public void attachVolumeToInstance() {
+
+	}
+
+	public void detachVolumeFromInstance() {
+
+	}
+
+	public void generateLoad(String isntanceID){
 		
 	}
-	
-	public void deleteSnapShot(){
-		
-	}
-	
-	public void attachVolumeToInstance(){
-		
-	}
-	
-	public void detachVolumeFromInstance(){
-		
-	}
-	
 	
 	public String getVolumeIDFromInstanceID(String instanceID) {
 		List<Volume> volumes = ec2.describeVolumes().getVolumes();
 		String volumeID = null;
 		for (Volume volume : volumes) {
-			List<VolumeAttachment> attachments = volume.getAttachments() ;
+			List<VolumeAttachment> attachments = volume.getAttachments();
 			for (VolumeAttachment volumeAttachment : attachments) {
-				if(volumeAttachment.getInstanceId().equals(instanceID)){
+				if (volumeAttachment.getInstanceId().equals(instanceID)) {
 					volumeID = volumeAttachment.getVolumeId();
 				}
-			}		
+			}
 		}
 		return volumeID;
 	}
-	
-	//TODO Mihir 
-	public void getInstanceMetrics(String instanceID){	
-		
+
+	// TODO Mihir
+	public void getInstanceMetrics(String instanceID) {
+
 	}
 
 }
