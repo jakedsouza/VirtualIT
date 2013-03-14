@@ -417,7 +417,7 @@ public class AWSUtils {
 	}
 
 	// TODO Mihir
-	public void getInstanceMetrics(String instanceID) {
+	public void getInstanceMetrics(String instanceID, int period, Date startTime, Date endTime) {
 		init();
 		//create cloud watch client
 		AmazonCloudWatchClient cloudWatch = new AmazonCloudWatchClient(credentials) ;
@@ -427,7 +427,7 @@ public class AWSUtils {
 		
 		//set up request message
 		statRequest.setNamespace("AWS/EC2"); //namespace
-		statRequest.setPeriod(60); //period of data
+		statRequest.setPeriod(period); //period of data
 		ArrayList<String> stats = new ArrayList<String>();
 		
 		//Use one of these strings: Average, Maximum, Minimum, SampleCount, Sum 
@@ -439,11 +439,11 @@ public class AWSUtils {
 		statRequest.setMetricName("CPUUtilization");
 		
 		// set time                                                                                                                                                                                                                                                 
-		GregorianCalendar calendar = new GregorianCalendar(TimeZone.getTimeZone("UTC"));
-		calendar.add(GregorianCalendar.SECOND, -1 * calendar.get(GregorianCalendar.SECOND)); // 1 second ago
-		Date endTime = calendar.getTime();
-		calendar.add(GregorianCalendar.MINUTE, -10); // 10 minutes ago
-		Date startTime = calendar.getTime();
+//		GregorianCalendar calendar = new GregorianCalendar(TimeZone.getTimeZone("UTC"));
+//		calendar.add(GregorianCalendar.SECOND, -1 * calendar.get(GregorianCalendar.SECOND)); // 1 second ago
+//		Date endTime = calendar.getTime();
+//		calendar.add(GregorianCalendar.MINUTE, -10); // 10 minutes ago
+//		Date startTime = calendar.getTime();
 		statRequest.setStartTime(startTime);
 		statRequest.setEndTime(endTime);
 		
@@ -463,8 +463,8 @@ public class AWSUtils {
 		for (Datapoint data : dataList){
 			averageCPU = data.getAverage();
 			timeStamp = data.getTimestamp();
-			System.out.println("Average CPU utlilization for last 10 minutes: "+averageCPU);
-			System.out.println("Totl CPU utlilization for last 10 minutes: "+data.getSum());
+			System.out.println("Average CPU utlilization for last "+(startTime-endTime)+" : "+ averageCPU);
+			System.out.println("Totl CPU utlilization for last "+(startTime-endTime)+" : "+data.getSum());
 		}
 		
 	}
