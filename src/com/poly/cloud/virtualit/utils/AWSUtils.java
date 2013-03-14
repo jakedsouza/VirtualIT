@@ -19,12 +19,11 @@ import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.PropertiesCredentials;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2Client;
-import com.amazonaws.services.ec2.model.AllocateAddressRequest;
 import com.amazonaws.services.ec2.model.AllocateAddressResult;
 import com.amazonaws.services.ec2.model.AssociateAddressRequest;
 import com.amazonaws.services.ec2.model.AssociateAddressResult;
+import com.amazonaws.services.ec2.model.AttachVolumeRequest;
 import com.amazonaws.services.ec2.model.AuthorizeSecurityGroupIngressRequest;
-import com.amazonaws.services.ec2.model.BundleInstanceRequest;
 import com.amazonaws.services.ec2.model.CreateImageRequest;
 import com.amazonaws.services.ec2.model.CreateImageResult;
 import com.amazonaws.services.ec2.model.CreateKeyPairRequest;
@@ -32,28 +31,24 @@ import com.amazonaws.services.ec2.model.CreateSecurityGroupRequest;
 import com.amazonaws.services.ec2.model.CreateSecurityGroupResult;
 import com.amazonaws.services.ec2.model.CreateSnapshotRequest;
 import com.amazonaws.services.ec2.model.CreateSnapshotResult;
+import com.amazonaws.services.ec2.model.CreateVolumeRequest;
+import com.amazonaws.services.ec2.model.CreateVolumeResult;
 import com.amazonaws.services.ec2.model.DeleteSnapshotRequest;
 import com.amazonaws.services.ec2.model.DeregisterImageRequest;
 import com.amazonaws.services.ec2.model.DescribeImagesRequest;
 import com.amazonaws.services.ec2.model.DescribeImagesResult;
-import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
-import com.amazonaws.services.ec2.model.DescribeInstancesResult;
-import com.amazonaws.services.ec2.model.DescribeVolumesRequest;
-import com.amazonaws.services.ec2.model.DescribeVolumesResult;
+import com.amazonaws.services.ec2.model.DetachVolumeRequest;
 import com.amazonaws.services.ec2.model.DisassociateAddressRequest;
 import com.amazonaws.services.ec2.model.Image;
-import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.InstanceType;
 import com.amazonaws.services.ec2.model.IpPermission;
 import com.amazonaws.services.ec2.model.KeyPair;
 import com.amazonaws.services.ec2.model.KeyPairInfo;
 import com.amazonaws.services.ec2.model.RunInstancesRequest;
 import com.amazonaws.services.ec2.model.RunInstancesResult;
-import com.amazonaws.services.ec2.model.S3Storage;
 import com.amazonaws.services.ec2.model.SecurityGroup;
 import com.amazonaws.services.ec2.model.StartInstancesRequest;
 import com.amazonaws.services.ec2.model.StopInstancesRequest;
-import com.amazonaws.services.ec2.model.Storage;
 import com.amazonaws.services.ec2.model.TerminateInstancesRequest;
 import com.amazonaws.services.ec2.model.Volume;
 import com.amazonaws.services.ec2.model.VolumeAttachment;
@@ -71,7 +66,7 @@ public class AWSUtils {
 	AWSCredentials credentials = null;
 
 	public AWSUtils() {
-	 init();
+		init();
 	}
 
 	public void init() {
@@ -82,7 +77,7 @@ public class AWSUtils {
 				log.info("Loading Credentials file ");
 				credentials = new PropertiesCredentials(
 						AWSUtils.class
-								.getResourceAsStream("/AwsCredentials.properties"));
+						.getResourceAsStream("/AwsCredentials.properties"));
 			} catch (IOException e) {
 				log.info("Error Loading credentials file");
 				e.printStackTrace();
@@ -109,7 +104,7 @@ public class AWSUtils {
 			String securityGroupDescription) {
 		log.info("Creating new security group with name " + securityGroupName);
 
-		//init();
+		// init();
 
 		String createdSecurityGroupID = null;
 		boolean securityGroupExists = false;
@@ -133,10 +128,10 @@ public class AWSUtils {
 					.createSecurityGroup(createSecurityGroupRequest);
 			createdSecurityGroupID = createSecurityGroupResult.getGroupId();
 			AuthorizeSecurityGroupIngressRequest ingressRequest = new AuthorizeSecurityGroupIngressRequest()
-					.withIpPermissions(
-							new IpPermission().withIpProtocol("tcp")
-									.withFromPort(0).withToPort(65535)
-									.withIpRanges(ALL_ACCESS_IP_RANGE))
+			.withIpPermissions(
+					new IpPermission().withIpProtocol("tcp")
+					.withFromPort(0).withToPort(65535)
+					.withIpRanges(ALL_ACCESS_IP_RANGE))
 					.withGroupName(securityGroupName);
 			ec2.authorizeSecurityGroupIngress(ingressRequest);
 			log.info("security group " + securityGroupName
@@ -162,7 +157,7 @@ public class AWSUtils {
 	 *         rename it . not sure
 	 */
 	public KeyPair createKeyPair(String keyName) {
-		//init();
+		// init();
 		KeyPair keyPair = null;
 		log.info("Creating a new keyPair with name " + keyName);
 		boolean keyPairExists = false;
@@ -175,7 +170,7 @@ public class AWSUtils {
 		}
 		if (!keyPairExists) {
 			CreateKeyPairRequest keyPairRequest = new CreateKeyPairRequest()
-					.withKeyName(keyName);
+			.withKeyName(keyName);
 			keyPair = ec2.createKeyPair(keyPairRequest).getKeyPair();
 
 			Path target = Paths.get(keyName);
@@ -204,7 +199,7 @@ public class AWSUtils {
 		return keyPair;
 	}
 
-	 // ---------------------Instance related code ----------------------------
+	// ---------------------Instance related code ----------------------------
 	/**
 	 * Creates an instance . If imageID is null , a new instance is created with
 	 * a default ami .
@@ -216,7 +211,7 @@ public class AWSUtils {
 	 */
 	public String createInstance(String keyName, String securityGroupName,
 			String imageID) {
-		//init();
+		// init();
 		log.info("Creating instance");
 		RunInstancesRequest runInstancesRequest = new RunInstancesRequest();
 		runInstancesRequest.setInstanceType(InstanceType.T1Micro);
@@ -247,10 +242,10 @@ public class AWSUtils {
 	 * @param instanceId
 	 */
 	public void deleteInstance(String instanceId) {
-		//init();
+		// init();
 		log.info("Terminating instance " + instanceId);
 		ec2.terminateInstances(new TerminateInstancesRequest()
-				.withInstanceIds(instanceId));
+		.withInstanceIds(instanceId));
 		log.info("Done terminating instance " + instanceId);
 	}
 
@@ -260,10 +255,10 @@ public class AWSUtils {
 	 * @param instanceId
 	 */
 	public void stopInstance(String instanceId) {
-		//init();
+		// init();
 		log.info("Stopping instance " + instanceId);
 		ec2.stopInstances(new StopInstancesRequest()
-				.withInstanceIds(instanceId));
+		.withInstanceIds(instanceId));
 		log.info("Done stopping instance " + instanceId);
 	}
 
@@ -273,15 +268,15 @@ public class AWSUtils {
 	 * @param instanceId
 	 */
 	public void startInstance(String instanceId) {
-		//init();
+		// init();
 		log.info("Starting instance " + instanceId);
 		ec2.startInstances(new StartInstancesRequest()
-				.withInstanceIds(instanceId));
+		.withInstanceIds(instanceId));
 		log.info("Done starting instance " + instanceId);
 	}
 
-	
-	//----------------------------Image and snapshot related code --------------------------
+	// ----------------------------Image and snapshot related code
+	// --------------------------
 	/**
 	 * Creates an EBS backed image of an instance
 	 * 
@@ -292,7 +287,7 @@ public class AWSUtils {
 	 * @return the new imageID of the created image
 	 */
 	public String createImage(String instanceId, String name) {
-		//init();		
+		// init();
 		log.info("Creating new image of instance " + instanceId
 				+ " with image name : " + name);
 		CreateImageRequest request = new CreateImageRequest();
@@ -326,7 +321,7 @@ public class AWSUtils {
 	 * @return the snapshot ID of the snapshot
 	 */
 	public String createSnapshotFromVolumeID(String volumeID, String description) {
-		//init();
+		// init();
 		log.info("Creating new snapshot of volume " + volumeID);
 		CreateSnapshotRequest request = new CreateSnapshotRequest();
 		request.setVolumeId(volumeID);
@@ -338,10 +333,10 @@ public class AWSUtils {
 
 	public void deleteImage(String imageID, boolean deleteSnapshot) {
 		// Get the image from imageID
-		//init();
+		// init();
 		log.info("Deleting image " + imageID);
 		DescribeImagesRequest describeImagesRequest = new DescribeImagesRequest()
-				.withImageIds(imageID);
+		.withImageIds(imageID);
 		DescribeImagesResult describeImagesResult = ec2
 				.describeImages(describeImagesRequest);
 		Image image = describeImagesResult.getImages().get(0);
@@ -356,23 +351,46 @@ public class AWSUtils {
 	}
 
 	public void deleteSnapShot(String snapshotID) {
-		//init();
+		// init();
 		log.info("Deleting snapshot " + snapshotID);
 		DeleteSnapshotRequest request = new DeleteSnapshotRequest(snapshotID);
 		ec2.deleteSnapshot(request);
 		log.info("Done deleting snapshot " + snapshotID);
 	}
 
-	public void attachVolumeToInstance() {
-
+	public String createNewVolume(){
+		CreateVolumeRequest cvr = new CreateVolumeRequest();
+        cvr.setAvailabilityZone("us-east-1a");
+        cvr.setSize(10); //size = 10 gigabytes
+    	CreateVolumeResult volumeResult = ec2.createVolume(cvr);
+    	String createdVolumeId = volumeResult.getVolume().getVolumeId();     
+    	return createdVolumeId;
+	}
+	public void attachVolumeToInstance(String volumeId, String instanceId,
+			String devicePath) {
+		log.info("Attaching volume " + volumeId + "to instance " + instanceId);
+		AttachVolumeRequest avr = new AttachVolumeRequest();
+		avr.setVolumeId(volumeId);
+		avr.setInstanceId(instanceId);
+		avr.setDevice(devicePath);
+		ec2.attachVolume(avr);
+		log.info("Done attaching volume " + volumeId + "to instance "
+				+ instanceId);
 	}
 
-	public void detachVolumeFromInstance() {
-
+	public void detachVolumeFromInstance(String volumeId, String instanceId) {
+		log.info("Detattaching volume " + volumeId + "to instance "
+				+ instanceId);
+		DetachVolumeRequest dvr = new DetachVolumeRequest();
+		dvr.setVolumeId(volumeId);
+		dvr.setInstanceId(instanceId);
+		ec2.detachVolume(dvr);
+		log.info("Done detattaching volume " + volumeId + "to instance "
+				+ instanceId);
 	}
 
 	public void generateLoad(String isntanceID) {
-
+		// TODO
 	}
 
 	public String getVolumeIDFromInstanceID(String instanceID) {
@@ -408,7 +426,7 @@ public class AWSUtils {
 		log.info("Associating ip : " + elasticIp + " to instance : "
 				+ instanceId);
 		AssociateAddressRequest aar = new AssociateAddressRequest()
-				.withInstanceId(instanceId).withPublicIp(elasticIp);
+		.withInstanceId(instanceId).withPublicIp(elasticIp);
 		AssociateAddressResult result = ec2.associateAddress(aar);
 		log.info("Finished associating ip : " + elasticIp + " to instance : "
 				+ instanceId);
@@ -420,6 +438,16 @@ public class AWSUtils {
 		dar.setPublicIp(elasticIp);
 		ec2.disassociateAddress(dar);
 		log.info("Finished disassociating ip : " + elasticIp);
+	}
+	
+	// Auto scaling code 
+	
+	public void enableAutoScaling(String instanceId){
+		//TODO
+	}
+	
+	public void disableAutoScaling(String instanceId){
+		//TODO
 	}
 
 }
