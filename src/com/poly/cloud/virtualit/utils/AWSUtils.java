@@ -4,19 +4,28 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.attribute.FileAttribute;
-import java.nio.file.attribute.PosixFilePermission;
-import java.nio.file.attribute.PosixFilePermissions;
+import java.util.ArrayList;
+//import java.nio.file.Files;
+//import java.nio.file.Path;
+//import java.nio.file.Paths;
+//import java.nio.file.attribute.FileAttribute;
+//import java.nio.file.attribute.PosixFilePermission;
+//import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Arrays;
+import java.util.Date;
+import java.util.GregorianCalendar;
 import java.util.List;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.logging.Logger;
 
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.PropertiesCredentials;
+import com.amazonaws.services.cloudwatch.AmazonCloudWatchClient;
+import com.amazonaws.services.cloudwatch.model.Datapoint;
+import com.amazonaws.services.cloudwatch.model.Dimension;
+import com.amazonaws.services.cloudwatch.model.GetMetricStatisticsRequest;
+import com.amazonaws.services.cloudwatch.model.GetMetricStatisticsResult;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2Client;
 import com.amazonaws.services.ec2.model.AllocateAddressResult;
@@ -173,23 +182,23 @@ public class AWSUtils {
 			.withKeyName(keyName);
 			keyPair = ec2.createKeyPair(keyPairRequest).getKeyPair();
 
-			Path target = Paths.get(keyName);
-			FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions
-					.asFileAttribute(PosixFilePermissions
-							.fromString("rw-------"));
-			try {
-				Files.deleteIfExists(target);
-				Files.createFile(target, attr);
-				BufferedWriter bufferedWriter;
-				bufferedWriter = new BufferedWriter(new FileWriter(new File(
-						keyName)));
-				bufferedWriter.write(keyPair.getKeyMaterial());
-				bufferedWriter.flush();
-				bufferedWriter.close();
-			} catch (IOException e) {
-				log.severe("Error writing key file");
-				log.throwing(AWSUtils.class.getName(), "CreateKeyPair", e);
-			}
+//			Path target = Paths.get(keyName);
+//			FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions
+//					.asFileAttribute(PosixFilePermissions
+//							.fromString("rw-------"));
+//			try {
+//				Files.deleteIfExists(target);
+//				Files.createFile(target, attr);
+//				BufferedWriter bufferedWriter;
+//				bufferedWriter = new BufferedWriter(new FileWriter(new File(
+//						keyName)));
+//				bufferedWriter.write(keyPair.getKeyMaterial());
+//				bufferedWriter.flush();
+//				bufferedWriter.close();
+//			} catch (IOException e) {
+//				log.severe("Error writing key file");
+//				log.throwing(AWSUtils.class.getName(), "CreateKeyPair", e);
+//			}
 			log.info("Key Pair " + keyName + " Created Successfully");
 
 		} else {
@@ -409,7 +418,55 @@ public class AWSUtils {
 
 	// TODO Mihir
 	public void getInstanceMetrics(String instanceID) {
-
+		init();
+		//create cloud watch client
+		AmazonCloudWatchClient cloudWatch = new AmazonCloudWatchClient(credentials) ;
+		
+		//create request message
+		GetMetricStatisticsRequest statRequest = new GetMetricStatisticsRequest();
+		
+		//set up request message
+		statRequest.setNamespace("AWS/EC2"); //namespace
+		statRequest.setPeriod(60); //period of data
+		ArrayList<String> stats = new ArrayList<String>();
+		
+		//Use one of these strings: Average, Maximum, Minimum, SampleCount, Sum 
+		//stats.add("Average"); 
+		stats.add("Sum");
+		statRequest.setStatistics(stats);
+		
+		//Use one of these strings: CPUUtilization, NetworkIn, NetworkOut, DiskReadBytes, DiskWriteBytes, DiskReadOperations  
+		statRequest.setMetricName("CPUUtilization");
+		
+		// set time                                                                                                                                                                                                                                                 
+		GregorianCalendar calendar = new GregorianCalendar(TimeZone.getTimeZone("UTC"));
+		calendar.add(GregorianCalendar.SECOND, -1 * calendar.get(GregorianCalendar.SECOND)); // 1 second ago
+		Date endTime = calendar.getTime();
+		calendar.add(GregorianCalendar.MINUTE, -10); // 10 minutes ago
+		Date startTime = calendar.getTime();
+		statRequest.setStartTime(startTime);
+		statRequest.setEndTime(endTime);
+		
+		//specify an instance
+		ArrayList<Dimension> dimensions = new ArrayList<Dimension>();
+		dimensions.add(new Dimension().withName("InstanceId").withValue(instanceID));
+		statRequest.setDimensions(dimensions);
+		
+		//get statistics
+		GetMetricStatisticsResult statResult = cloudWatch.getMetricStatistics(statRequest);
+		
+		//display
+		System.out.println(statResult.toString());
+		List<Datapoint> dataList = statResult.getDatapoints();
+		Double averageCPU = null;
+		Date timeStamp = null;
+		for (Datapoint data : dataList){
+			averageCPU = data.getAverage();
+			timeStamp = data.getTimestamp();
+			System.out.println("Average CPU utlilization for last 10 minutes: "+averageCPU);
+			System.out.println("Totl CPU utlilization for last 10 minutes: "+data.getSum());
+		}
+		
 	}
 
 	// Elastic IP related code
