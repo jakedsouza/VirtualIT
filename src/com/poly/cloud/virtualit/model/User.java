@@ -14,7 +14,7 @@ public class User {
 	private static int USER_COUNT;
 	private String id;
 	private String username;
-	private ArrayList<Instance> instances;
+	private ArrayList<InstanceModel> instances;
 
 	@SuppressWarnings("unused")
 	private User() {
@@ -29,6 +29,7 @@ public class User {
 	public User(String username) {
 		this.id = Integer.toString(USER_COUNT + 1);
 		this.username = username;
+		this.instances = new ArrayList<InstanceModel>();
 	}
 
 	/**
@@ -64,7 +65,7 @@ public class User {
 	/**
 	 * @return the instances
 	 */
-	public ArrayList<Instance> getInstances() {
+	public ArrayList<InstanceModel> getInstances() {
 		return instances;
 	}
 
@@ -72,20 +73,24 @@ public class User {
 	 * @param instances
 	 *            the instances to set
 	 */
-	public void setInstances(ArrayList<Instance> instances) {
+	public void setInstances(ArrayList<InstanceModel> instances) {
 		this.instances = instances;
 	}
 
-	public void addInstance(Instance instance) {
-		// TODO add a single instance to the array list
+	public void addInstance(InstanceModel instance) {
+		this.instances.add(instance);
 	}
 
-	public void removeInstance(Instance instance) {
-		// TODO remove a single instance
+	public void removeInstance(InstanceModel instance) {
+		this.instances.remove(instance);
 	}
 
 	public void removeInstance(String instanceID) {
-		// TODO remove an instance from list given instanceid
+		for(InstanceModel instance : instances){
+			if(instance.getInstanceID().equals(instanceID)){
+				instances.remove(instance);
+			}
+		}
 	}
 
 }

@@ -3,5 +3,6 @@
 	<classpathentry kind="src" path="src"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-1.7"/>
 	<classpathentry kind="con" path="com.amazonaws.eclipse.sdk.AWS_JAVA_SDK"/>
+	<classpathentry kind="lib" path="lib/jsch-0.1.49.jar" sourcepath="/home/jake/Downloads/jsch-0.1.49/src"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

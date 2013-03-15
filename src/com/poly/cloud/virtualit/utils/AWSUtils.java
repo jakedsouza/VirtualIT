@@ -5,13 +5,15 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
-//import java.nio.file.Files;
-//import java.nio.file.Path;
-//import java.nio.file.Paths;
-//import java.nio.file.attribute.FileAttribute;
-//import java.nio.file.attribute.PosixFilePermission;
-//import java.nio.file.attribute.PosixFilePermissions;
+import java.net.ConnectException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.List;
@@ -21,6 +23,8 @@ import java.util.logging.Logger;
 
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.PropertiesCredentials;
+import com.amazonaws.services.autoscaling.model.AutoScalingGroup;
+import com.amazonaws.services.autoscaling.model.LaunchConfiguration;
 import com.amazonaws.services.cloudwatch.AmazonCloudWatchClient;
 import com.amazonaws.services.cloudwatch.model.Datapoint;
 import com.amazonaws.services.cloudwatch.model.Dimension;
@@ -42,13 +46,24 @@ import com.amazonaws.services.ec2.model.CreateSnapshotRequest;
 import com.amazonaws.services.ec2.model.CreateSnapshotResult;
 import com.amazonaws.services.ec2.model.CreateVolumeRequest;
 import com.amazonaws.services.ec2.model.CreateVolumeResult;
+import com.amazonaws.services.ec2.model.DeleteKeyPairRequest;
 import com.amazonaws.services.ec2.model.DeleteSnapshotRequest;
 import com.amazonaws.services.ec2.model.DeregisterImageRequest;
 import com.amazonaws.services.ec2.model.DescribeImagesRequest;
 import com.amazonaws.services.ec2.model.DescribeImagesResult;
+import com.amazonaws.services.ec2.model.DescribeInstanceStatusRequest;
+import com.amazonaws.services.ec2.model.DescribeInstanceStatusResult;
+import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
+import com.amazonaws.services.ec2.model.DescribeInstancesResult;
+import com.amazonaws.services.ec2.model.DescribeSnapshotsRequest;
+import com.amazonaws.services.ec2.model.DescribeSnapshotsResult;
+import com.amazonaws.services.ec2.model.DescribeVolumesRequest;
+import com.amazonaws.services.ec2.model.DescribeVolumesResult;
 import com.amazonaws.services.ec2.model.DetachVolumeRequest;
 import com.amazonaws.services.ec2.model.DisassociateAddressRequest;
 import com.amazonaws.services.ec2.model.Image;
+import com.amazonaws.services.ec2.model.Instance;
+import com.amazonaws.services.ec2.model.InstanceStatus;
 import com.amazonaws.services.ec2.model.InstanceType;
 import com.amazonaws.services.ec2.model.IpPermission;
 import com.amazonaws.services.ec2.model.KeyPair;
@@ -58,9 +73,16 @@ import com.amazonaws.services.ec2.model.RunInstancesResult;
 import com.amazonaws.services.ec2.model.SecurityGroup;
 import com.amazonaws.services.ec2.model.StartInstancesRequest;
 import com.amazonaws.services.ec2.model.StopInstancesRequest;
+import com.amazonaws.services.ec2.model.StopInstancesResult;
 import com.amazonaws.services.ec2.model.TerminateInstancesRequest;
 import com.amazonaws.services.ec2.model.Volume;
 import com.amazonaws.services.ec2.model.VolumeAttachment;
+import com.jcraft.jsch.Channel;
+import com.jcraft.jsch.ChannelExec;
+import com.jcraft.jsch.Identity;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.JSchException;
+import com.jcraft.jsch.Session;
 
 public class AWSUtils {
 	private static final Logger log = Logger
@@ -177,28 +199,32 @@ public class AWSUtils {
 				keyPairExists = true;
 			}
 		}
+		if (keyPairExists) {
+			ec2.deleteKeyPair(new DeleteKeyPairRequest().withKeyName(keyName));
+			keyPairExists = false;
+		}
 		if (!keyPairExists) {
 			CreateKeyPairRequest keyPairRequest = new CreateKeyPairRequest()
 			.withKeyName(keyName);
 			keyPair = ec2.createKeyPair(keyPairRequest).getKeyPair();
 
-//			Path target = Paths.get(keyName);
-//			FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions
-//					.asFileAttribute(PosixFilePermissions
-//							.fromString("rw-------"));
-//			try {
-//				Files.deleteIfExists(target);
-//				Files.createFile(target, attr);
-//				BufferedWriter bufferedWriter;
-//				bufferedWriter = new BufferedWriter(new FileWriter(new File(
-//						keyName)));
-//				bufferedWriter.write(keyPair.getKeyMaterial());
-//				bufferedWriter.flush();
-//				bufferedWriter.close();
-//			} catch (IOException e) {
-//				log.severe("Error writing key file");
-//				log.throwing(AWSUtils.class.getName(), "CreateKeyPair", e);
-//			}
+			Path target = Paths.get(keyName);
+			FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions
+					.asFileAttribute(PosixFilePermissions
+							.fromString("rw-------"));
+			try {
+				Files.deleteIfExists(target);
+				Files.createFile(target, attr);
+				BufferedWriter bufferedWriter;
+				bufferedWriter = new BufferedWriter(new FileWriter(new File(
+						keyName)));
+				bufferedWriter.write(keyPair.getKeyMaterial());
+				bufferedWriter.flush();
+				bufferedWriter.close();
+			} catch (IOException e) {
+				log.severe("Error writing key file");
+				log.throwing(AWSUtils.class.getName(), "CreateKeyPair", e);
+			}
 			log.info("Key Pair " + keyName + " Created Successfully");
 
 		} else {
@@ -226,7 +252,7 @@ public class AWSUtils {
 		runInstancesRequest.setInstanceType(InstanceType.T1Micro);
 		runInstancesRequest.setMinCount(1);
 		runInstancesRequest.setMaxCount(1);
-
+		runInstancesRequest.setMonitoring(true);
 		if (imageID == null) {
 			imageID = DEFAULT_IMAGE_ID;
 			runInstancesRequest.setImageId(imageID);
@@ -234,13 +260,15 @@ public class AWSUtils {
 		if (keyName != null) {
 			runInstancesRequest.setKeyName(keyName);
 		}
-		if (securityGroupName == null) {
+		if (securityGroupName != null) {
 			runInstancesRequest.setSecurityGroups(Arrays
 					.asList(securityGroupName));
 		}
 		RunInstancesResult result = ec2.runInstances(runInstancesRequest);
 		String instanceID = result.getReservation().getInstances().get(0)
 				.getInstanceId();
+		
+		waitForStatus(instanceID, "running");
 		log.info("Done creating new instance : " + instanceID);
 		return instanceID;
 	}
@@ -255,6 +283,7 @@ public class AWSUtils {
 		log.info("Terminating instance " + instanceId);
 		ec2.terminateInstances(new TerminateInstancesRequest()
 		.withInstanceIds(instanceId));
+		waitForStatus(instanceId, "terminated");
 		log.info("Done terminating instance " + instanceId);
 	}
 
@@ -268,6 +297,8 @@ public class AWSUtils {
 		log.info("Stopping instance " + instanceId);
 		ec2.stopInstances(new StopInstancesRequest()
 		.withInstanceIds(instanceId));
+		waitForStatus(instanceId, "stopped");
+
 		log.info("Done stopping instance " + instanceId);
 	}
 
@@ -281,8 +312,12 @@ public class AWSUtils {
 		log.info("Starting instance " + instanceId);
 		ec2.startInstances(new StartInstancesRequest()
 		.withInstanceIds(instanceId));
+		waitForStatus(instanceId, "running");
+
 		log.info("Done starting instance " + instanceId);
 	}
+
+
 
 	// ----------------------------Image and snapshot related code
 	// --------------------------
@@ -305,8 +340,11 @@ public class AWSUtils {
 		CreateImageResult result = ec2.createImage(request);
 		log.info("Done creating new image of instance " + instanceId
 				+ " with image name : " + name);
+		waitForImageStatus(result.getImageId(), "available");
 		return result.getImageId();
 	}
+
+	
 
 	/**
 	 * Creates a snapshot of the root volume of a specific instance
@@ -322,6 +360,97 @@ public class AWSUtils {
 		return snapshotID;
 	}
 
+	// pending, running, shutting-down, terminated, stopping, stopped
+	public void waitForStatus(String instanceId, String status) {
+		if(status.equals("running")){
+			log.info("Waiting for instance to be in " + status + " state");
+			try {
+				Thread.sleep(100000);
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+		DescribeInstancesResult result = ec2
+				.describeInstances(new DescribeInstancesRequest()
+				.withInstanceIds(instanceId));
+		String state = "";
+		state = result.getReservations().get(0).getInstances().get(0).getState().getName();
+
+		
+		while (!state.equals(status)) {
+			log.info("Waiting for instance to be in " + status + " state");
+			try {
+				Thread.sleep(30000);
+				result = ec2
+						.describeInstances(new DescribeInstancesRequest()
+						.withInstanceIds(instanceId));
+				state = result.getReservations().get(0).getInstances().get(0).getState().getName();
+						
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+
+	}
+	
+	//available, deregistered
+		public void waitForImageStatus(String imageId, String status) {
+			DescribeImagesResult result = ec2
+					.describeImages(new DescribeImagesRequest()
+					.withImageIds(imageId));
+			String state = "";
+			state = result.getImages().get(0).getState();
+			while (!state.equals(status)) {
+				try {
+					log.info("Waiting for image to be available");
+					Thread.sleep(30000);
+					result = ec2.describeImages(new DescribeImagesRequest()
+					.withImageIds(imageId));
+					state = result.getImages().get(0).getState();
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+
+			}
+
+		}
+	//pending, completed, error
+	public void waitForSnapshotStatus(String snapshotId){
+		DescribeSnapshotsResult result = ec2.describeSnapshots(new DescribeSnapshotsRequest().withSnapshotIds(snapshotId)) ;
+		String state = ""; 
+		state = result.getSnapshots().get(0).getState();
+		while (!state.equals(state)) {
+			try {
+				log.info("Waiting for snapshot to be available");
+				Thread.sleep(30000);
+				result = ec2.describeSnapshots(new DescribeSnapshotsRequest().withSnapshotIds(snapshotId)) ;
+				state = result.getSnapshots().get(0).getState();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+
+		}
+
+	}
+	//creating, available, in-use, deleting, error
+	public void waitForVolumeStatus(String volumeId){
+		DescribeVolumesResult result = ec2.describeVolumes(new DescribeVolumesRequest().withVolumeIds(volumeId)) ;
+		String state = ""; 
+		state = result.getVolumes().get(0).getState();
+		while (!state.equals(state)) {
+			try {
+				log.info("Waiting for snapshot to be available");
+				Thread.sleep(30000);
+				result = ec2.describeVolumes(new DescribeVolumesRequest().withVolumeIds(volumeId)) ;
+				state = result.getVolumes().get(0).getState();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+
+		}
+	}
+	
 	/**
 	 * Creates a snapshot of a specific volume given the volumeID
 	 * 
@@ -367,14 +496,15 @@ public class AWSUtils {
 		log.info("Done deleting snapshot " + snapshotID);
 	}
 
-	public String createNewVolume(){
+	public String createNewVolume() {
 		CreateVolumeRequest cvr = new CreateVolumeRequest();
-        cvr.setAvailabilityZone("us-east-1a");
-        cvr.setSize(10); //size = 10 gigabytes
-    	CreateVolumeResult volumeResult = ec2.createVolume(cvr);
-    	String createdVolumeId = volumeResult.getVolume().getVolumeId();     
-    	return createdVolumeId;
+		cvr.setAvailabilityZone("us-east-1a");
+		cvr.setSize(10); // size = 10 gigabytes
+		CreateVolumeResult volumeResult = ec2.createVolume(cvr);
+		String createdVolumeId = volumeResult.getVolume().getVolumeId();
+		return createdVolumeId;
 	}
+
 	public void attachVolumeToInstance(String volumeId, String instanceId,
 			String devicePath) {
 		log.info("Attaching volume " + volumeId + "to instance " + instanceId);
@@ -398,8 +528,47 @@ public class AWSUtils {
 				+ instanceId);
 	}
 
-	public void generateLoad(String isntanceID) {
-		// TODO
+	public boolean generateLoad(String instanceID, String ipAddress,
+			String keyName, boolean hi) {
+		if (hi) {
+			log.info("Running ssh command on instance  " + instanceID
+					+ " to increase cpu load");
+		} else {
+			log.info("Running ssh command on instance  " + instanceID
+					+ " to reduce cpu load");
+		}
+		JSch jsch = null;
+		Session session = null;
+		jsch = new JSch();
+		try {
+			jsch.addIdentity(keyName);
+			session = jsch.getSession("ec2-user", ipAddress, 22);
+			java.util.Properties config = new java.util.Properties();
+			config.put("StrictHostKeyChecking", "no");
+			session.setConfig(config);
+			System.out.println("Connecting via SSH to " + ipAddress
+					+ " - Please wait for few minutes... ");
+			session.connect();
+			System.out.println("Connection successfull");
+			Channel channel = session.openChannel("exec");
+			channel.setOutputStream(System.out);
+			String command = "";
+			if (hi = true) {
+				command = "dd if=/dev/zero of=/dev/null";
+			} else {
+				command = "killall -9 dd";
+			}
+			((ChannelExec) channel).setCommand(command);
+			channel.setInputStream(System.in);
+			channel.connect();
+		} catch (JSchException e) {
+			e.printStackTrace();
+			return false;
+		} catch (Exception e) {
+			e.printStackTrace();
+			return false;
+		}
+		return true;
 	}
 
 	public String getVolumeIDFromInstanceID(String instanceID) {
@@ -417,56 +586,67 @@ public class AWSUtils {
 	}
 
 	// TODO Mihir
-	public void getInstanceMetrics(String instanceID, int period, Date startTime, Date endTime) {
-		init();
-		//create cloud watch client
-		AmazonCloudWatchClient cloudWatch = new AmazonCloudWatchClient(credentials) ;
-		
-		//create request message
+	public double getAverageCpuutilization(String instanceID, int period,
+			int timeInterval) {
+		// init();
+		log.info("Getting average CPU utilization for instance " + instanceID
+				+ "for the last " + timeInterval + " minutes");
+		// create cloud watch client
+		AmazonCloudWatchClient cloudWatch = new AmazonCloudWatchClient(
+				credentials);
+
+		// create request message
 		GetMetricStatisticsRequest statRequest = new GetMetricStatisticsRequest();
-		
-		//set up request message
-		statRequest.setNamespace("AWS/EC2"); //namespace
-		statRequest.setPeriod(period); //period of data
+
+		// set up request message
+		statRequest.setNamespace("AWS/EC2"); // namespace
+		statRequest.setPeriod(period); // period of data
 		ArrayList<String> stats = new ArrayList<String>();
-		
-		//Use one of these strings: Average, Maximum, Minimum, SampleCount, Sum 
-		//stats.add("Average"); 
+
+		// Use one of these strings: Average, Maximum, Minimum, SampleCount, Sum
+		stats.add("Average");
 		stats.add("Sum");
 		statRequest.setStatistics(stats);
-		
-		//Use one of these strings: CPUUtilization, NetworkIn, NetworkOut, DiskReadBytes, DiskWriteBytes, DiskReadOperations  
+
+		// Use one of these strings: CPUUtilization, NetworkIn, NetworkOut,
+		// DiskReadBytes, DiskWriteBytes, DiskReadOperations
 		statRequest.setMetricName("CPUUtilization");
-		
-		// set time                                                                                                                                                                                                                                                 
-//		GregorianCalendar calendar = new GregorianCalendar(TimeZone.getTimeZone("UTC"));
-//		calendar.add(GregorianCalendar.SECOND, -1 * calendar.get(GregorianCalendar.SECOND)); // 1 second ago
-//		Date endTime = calendar.getTime();
-//		calendar.add(GregorianCalendar.MINUTE, -10); // 10 minutes ago
-//		Date startTime = calendar.getTime();
+
+		// set time
+		GregorianCalendar calendar = new GregorianCalendar(
+				TimeZone.getTimeZone("EDT"));
+		calendar.add(GregorianCalendar.SECOND,
+				-1 * calendar.get(GregorianCalendar.SECOND)); // 1 second ago
+		Date endTime = calendar.getTime();
+		calendar.add(GregorianCalendar.MINUTE, -timeInterval); // 10 minutes ago
+		Date startTime = calendar.getTime();
 		statRequest.setStartTime(startTime);
 		statRequest.setEndTime(endTime);
-		
-		//specify an instance
+
+		// specify an instance
 		ArrayList<Dimension> dimensions = new ArrayList<Dimension>();
-		dimensions.add(new Dimension().withName("InstanceId").withValue(instanceID));
+		dimensions.add(new Dimension().withName("InstanceId").withValue(
+				instanceID));
 		statRequest.setDimensions(dimensions);
-		
-		//get statistics
-		GetMetricStatisticsResult statResult = cloudWatch.getMetricStatistics(statRequest);
-		
-		//display
-		System.out.println(statResult.toString());
+
+		// get statistics
+		GetMetricStatisticsResult statResult = cloudWatch
+				.getMetricStatistics(statRequest);
+
+		// return
+		log.info(statResult.toString());
 		List<Datapoint> dataList = statResult.getDatapoints();
-		Double averageCPU = null;
+		double averageCPU = 0;
 		Date timeStamp = null;
-		for (Datapoint data : dataList){
-			averageCPU = data.getAverage();
+		for (Datapoint data : dataList) {
+			averageCPU = averageCPU + data.getAverage();
 			timeStamp = data.getTimestamp();
-			System.out.println("Average CPU utlilization for last "+(startTime-endTime)+" : "+ averageCPU);
-			System.out.println("Totl CPU utlilization for last "+(startTime-endTime)+" : "+data.getSum());
 		}
-		
+		if (dataList.size() != 0) {
+			averageCPU = averageCPU / dataList.size();
+		}
+		log.info("Average Cpu Utilization is = " + averageCPU);
+		return averageCPU;
 	}
 
 	// Elastic IP related code
@@ -496,15 +676,45 @@ public class AWSUtils {
 		ec2.disassociateAddress(dar);
 		log.info("Finished disassociating ip : " + elasticIp);
 	}
-	
-	// Auto scaling code 
-	
-	public void enableAutoScaling(String instanceId){
-		//TODO
+
+	public void waitTillInstanceIsRunning(Collection<String> instanceIds) {
+		DescribeInstanceStatusRequest describeInstanceRequest = new DescribeInstanceStatusRequest()
+		.withInstanceIds(instanceIds);
+		DescribeInstanceStatusResult describeInstanceResult = ec2
+				.describeInstanceStatus(describeInstanceRequest);
+		List<InstanceStatus> state = describeInstanceResult
+				.getInstanceStatuses();
+		while (state.size() < instanceIds.size()) {
+			log.info("Sleeping for 100 seconds if instances are in pending state");
+			try {
+				Thread.sleep(100000);
+			} catch (InterruptedException e) {
+				log.severe("Thread interrupted");
+				e.printStackTrace();
+			} // Do nothing, just wait, have thread sleep
+			describeInstanceResult = ec2
+					.describeInstanceStatus(describeInstanceRequest);
+			state = describeInstanceResult.getInstanceStatuses();
+		}
 	}
-	
-	public void disableAutoScaling(String instanceId){
-		//TODO
+
+	public Instance getInstanceInformation(String instanceID) {
+		DescribeInstancesResult result = ec2
+				.describeInstances(new DescribeInstancesRequest()
+				.withInstanceIds(instanceID));
+		Instance i = result.getReservations().get(0).getInstances().get(0);
+		return i;
+	}
+
+	// Auto scaling code
+
+	public void enableAutoScaling(String instanceId) {
+		LaunchConfiguration launchConfiguration = new LaunchConfiguration();
+		// launchConfiguration.s
+	}
+
+	public void disableAutoScaling(String instanceId) {
+		// TODO
 	}
 
 }
