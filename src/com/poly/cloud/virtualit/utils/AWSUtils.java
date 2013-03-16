@@ -37,6 +37,7 @@ import com.amazonaws.services.ec2.model.AssociateAddressRequest;
 import com.amazonaws.services.ec2.model.AssociateAddressResult;
 import com.amazonaws.services.ec2.model.AttachVolumeRequest;
 import com.amazonaws.services.ec2.model.AuthorizeSecurityGroupIngressRequest;
+import com.amazonaws.services.ec2.model.BlockDeviceMapping;
 import com.amazonaws.services.ec2.model.CreateImageRequest;
 import com.amazonaws.services.ec2.model.CreateImageResult;
 import com.amazonaws.services.ec2.model.CreateKeyPairRequest;
@@ -61,6 +62,7 @@ import com.amazonaws.services.ec2.model.DescribeVolumesRequest;
 import com.amazonaws.services.ec2.model.DescribeVolumesResult;
 import com.amazonaws.services.ec2.model.DetachVolumeRequest;
 import com.amazonaws.services.ec2.model.DisassociateAddressRequest;
+import com.amazonaws.services.ec2.model.EbsBlockDevice;
 import com.amazonaws.services.ec2.model.Image;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.InstanceStatus;
@@ -252,11 +254,12 @@ public class AWSUtils {
 		runInstancesRequest.setInstanceType(InstanceType.T1Micro);
 		runInstancesRequest.setMinCount(1);
 		runInstancesRequest.setMaxCount(1);
-		runInstancesRequest.setMonitoring(true);
+		runInstancesRequest.setMonitoring(true);		
 		if (imageID == null) {
 			imageID = DEFAULT_IMAGE_ID;
 			runInstancesRequest.setImageId(imageID);
 		}
+		runInstancesRequest.setImageId(imageID);
 		if (keyName != null) {
 			runInstancesRequest.setKeyName(keyName);
 		}
@@ -272,6 +275,7 @@ public class AWSUtils {
 		log.info("Done creating new instance : " + instanceID);
 		return instanceID;
 	}
+	
 
 	/**
 	 * Deletes the instance with the given instance id
@@ -338,9 +342,10 @@ public class AWSUtils {
 		request.setInstanceId(instanceId);
 		request.setName(name);
 		CreateImageResult result = ec2.createImage(request);
+		waitForImageStatus(result.getImageId(), "available");
 		log.info("Done creating new image of instance " + instanceId
 				+ " with image name : " + name);
-		waitForImageStatus(result.getImageId(), "available");
+		
 		return result.getImageId();
 	}
 
@@ -396,6 +401,11 @@ public class AWSUtils {
 	
 	//available, deregistered
 		public void waitForImageStatus(String imageId, String status) {
+			try{
+				Thread.sleep(10000);
+			}catch(InterruptedException e){
+				e.printStackTrace();
+			}
 			DescribeImagesResult result = ec2
 					.describeImages(new DescribeImagesRequest()
 					.withImageIds(imageId));
@@ -416,11 +426,11 @@ public class AWSUtils {
 
 		}
 	//pending, completed, error
-	public void waitForSnapshotStatus(String snapshotId){
+	public void waitForSnapshotStatus(String snapshotId,String status){
 		DescribeSnapshotsResult result = ec2.describeSnapshots(new DescribeSnapshotsRequest().withSnapshotIds(snapshotId)) ;
 		String state = ""; 
 		state = result.getSnapshots().get(0).getState();
-		while (!state.equals(state)) {
+		while (!state.equals(status)) {
 			try {
 				log.info("Waiting for snapshot to be available");
 				Thread.sleep(30000);
@@ -434,11 +444,11 @@ public class AWSUtils {
 
 	}
 	//creating, available, in-use, deleting, error
-	public void waitForVolumeStatus(String volumeId){
+	public void waitForVolumeStatus(String volumeId,String status){
 		DescribeVolumesResult result = ec2.describeVolumes(new DescribeVolumesRequest().withVolumeIds(volumeId)) ;
 		String state = ""; 
 		state = result.getVolumes().get(0).getState();
-		while (!state.equals(state)) {
+		while (!state.equals(status)) {
 			try {
 				log.info("Waiting for snapshot to be available");
 				Thread.sleep(30000);
@@ -466,7 +476,9 @@ public class AWSUtils {
 		request.setDescription(description);
 		CreateSnapshotResult result = ec2.createSnapshot(request);
 		log.info("Done creating new snapshot of volume " + volumeID);
-		return result.getSnapshot().getSnapshotId();
+		String snapshotID =result.getSnapshot().getSnapshotId() ;
+		waitForSnapshotStatus(snapshotID,"completed");
+		return snapshotID;
 	}
 
 	public void deleteImage(String imageID, boolean deleteSnapshot) {
@@ -485,6 +497,7 @@ public class AWSUtils {
 					.getSnapshotId();
 			deleteSnapShot(snapshotID);
 		}
+		//waitForImageStatus(imageID, "deregistered");
 		log.info("Done image " + imageID);
 	}
 
@@ -502,6 +515,7 @@ public class AWSUtils {
 		cvr.setSize(10); // size = 10 gigabytes
 		CreateVolumeResult volumeResult = ec2.createVolume(cvr);
 		String createdVolumeId = volumeResult.getVolume().getVolumeId();
+		waitForVolumeStatus(createdVolumeId , "available");
 		return createdVolumeId;
 	}
 
@@ -546,10 +560,10 @@ public class AWSUtils {
 			java.util.Properties config = new java.util.Properties();
 			config.put("StrictHostKeyChecking", "no");
 			session.setConfig(config);
-			System.out.println("Connecting via SSH to " + ipAddress
+			log.info("Connecting via SSH to " + ipAddress
 					+ " - Please wait for few minutes... ");
 			session.connect();
-			System.out.println("Connection successfull");
+			log.info("Connection successfull");
 			Channel channel = session.openChannel("exec");
 			channel.setOutputStream(System.out);
 			String command = "";
@@ -715,6 +729,15 @@ public class AWSUtils {
 
 	public void disableAutoScaling(String instanceId) {
 		// TODO
+	}
+	
+	public String createVolumeFromSnapShot(String snapshotId){
+		CreateVolumeRequest request = new CreateVolumeRequest();
+		request.setSnapshotId(snapshotId);
+		CreateVolumeResult result =ec2.createVolume(request);
+		waitForVolumeStatus(result.getVolume().getVolumeId(), "available");
+		return result.getVolume().getVolumeId();
+		
 	}
 
 }

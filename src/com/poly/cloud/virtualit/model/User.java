@@ -93,4 +93,18 @@ public class User {
 		}
 	}
 
+	/* (non-Javadoc)
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder();
+		sb.append("User Name : " + username + " ,");
+		for (InstanceModel model : instances) {
+			sb.append(model.toString());
+		}
+		sb.append("}");
+		return sb.toString();
+	}
+
 }

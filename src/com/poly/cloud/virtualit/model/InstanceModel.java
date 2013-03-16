@@ -257,7 +257,27 @@ public class InstanceModel {
 	}
 	
 	
-	
+	/* (non-Javadoc)
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder();
+		sb.append("{ ImageId : " + this.amiID + ",");
+		sb.append(" ElasticIpAddress : " + this.elasticIP + ",");
+		sb.append(" instanceID : " + this.instanceID + ",");
+		sb.append(" instanceType : " + this.instanceType + ",");
+		sb.append(" publicDNSAddress : " + this.publicDNSAddress + ",");
+		sb.append(" securityGroupID : " + this.securityGroupID + ",");
+		sb.append(" securityGroupName : " + this.securityGroupName + ",");
+		sb.append(" snapshotID : " + this.snapshotID + ",");
+		sb.append(" snapshotName : " + this.snapshotName + ",");
+		sb.append(" volumeID : " + this.volumeID + ",");
+		sb.append(" isRootInstance : " + this.isRootInstance + ",");
+		sb.append(" KeyName : " + this.keyPair.getKeyName() + "}");
+		return sb.toString();
+	}
+
 	
 
 }

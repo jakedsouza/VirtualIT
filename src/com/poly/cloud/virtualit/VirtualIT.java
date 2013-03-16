@@ -13,19 +13,22 @@ import com.poly.cloud.virtualit.utils.AWSUtils;
 public class VirtualIT {
 	private static final Logger log = Logger
 			.getLogger(VirtualIT.class.getName());
-	private static final String SECURITY_GROUP_NAME = "VirtualITSecurityGroup";
-	private static final String KEY_NAME = "VirtualITKeyPair";
+
 	/**
 	 * @param args
-	 * @throws InterruptedException 
+	 * 
 	 */
-	public static void main(String[] args) throws InterruptedException {
+	public static void main(String[] args){
 		log.info("Creating two users ") ;
 		
 		User u1 = initializeUser("User1");
 		User u2 = initializeUser("User2");	
-		backupUser(u1);
-		backupUser(u2);	
+		u1 = backupUserCreatingImage(u1);
+		u2 = backupUserCreatingImage(u2);	
+		
+		u1 = startUpInstance(u1);
+		u2 = startUpInstance(u2);
+		
 		log.info("First Day 2 users created ");		
 	}
 	
@@ -81,7 +84,7 @@ public class VirtualIT {
 		return u ;
 	}
 	
-	public static User backupUser(User u ){
+	public static User backupUserCreatingImage(User u ){
 		log.info("Shutting down user " + u.getUsername() + " instances ");
 		AWSUtils utils = new AWSUtils();
 		
@@ -90,31 +93,106 @@ public class VirtualIT {
 		log.info("Stopping instance " + instanceId );
 		utils.stopInstance(instanceId);
 		
-		log.info("Detaching root volume from user");
-		String volumeId = utils.getVolumeIDFromInstanceID(instanceId);
-		utils.detachVolumeFromInstance(volumeId, instanceId);
+//		log.info("Detaching root volume from user");
+//		String volumeId = utils.getVolumeIDFromInstanceID(instanceId);
+//		utils.detachVolumeFromInstance(volumeId, instanceId);
 		
 		log.info("Creating AMI of instance ") ;
-		String imageId = utils.createImage(instanceId, "ami_" + u.getUsername()+"_" + Calendar.getInstance());
+		String imageId = utils.createImage(instanceId, "ami_" + u.getUsername());
 		log.info("Ami Created ") ;
 		
-		log.info("Creating Snapshot of volume " + volumeId ) ;
-		String snapshotName = "snap_"+ u.getUsername()+"_" + Calendar.getInstance() ;
-		String snapShotId = utils.createSnapshotFromVolumeID(volumeId,snapshotName);
-		log.info("Snapshot of created" ) ;
+		// Disassociating elastic Ip
+		utils.disassociateIp(instanceModel.getElasticIP());
+		
+//		log.info("Creating Snapshot of volume " + volumeId ) ;
+//		String snapshotName = "snap_"+ u.getUsername();
+//		String snapShotId = utils.createSnapshotFromVolumeID(volumeId,snapshotName);
+//		log.info("Snapshot of created" ) ;
 		
 		log.info("Terminating instance " + instanceId);
 		utils.deleteInstance(instanceId);
 		log.info("Instance terminated " ) ;
-		instanceModel.setSnapshotID(snapShotId);
-		instanceModel.setSnapshotName(snapshotName);
-		instanceModel.setVolumeID(volumeId);
+		//instanceModel.setSnapshotID(snapShotId);
+		//instanceModel.setSnapshotName(snapshotName);
+		//instanceModel.setVolumeID(volumeId);
 		instanceModel.setAmiID(imageId);
 		u.removeInstance(instanceModel);
 		u.addInstance(instanceModel);
 		return u;		
 	}
 	
-	
+	public static User startUpInstance(User u ){
+		InstanceModel instanceModel = u.getInstances().get(0);
+		User user;
+		if(instanceModel.getSnapshotID() == null ){
+			user = startupinstanceFromImage(u);
+		}else{
+			user= startupInstanceFromSnapShot(u);
+		}		
+		return user;		
+	}
+
+	private static User startupinstanceFromImage(User u) {
+		InstanceModel instanceModel = u.getInstances().get(0);
+		String imageId = instanceModel.getAmiID();
+		String ipAddress = instanceModel.getElasticIP();
+		KeyPair keyPair =instanceModel.getKeyPair();
+		String securityGroupName = instanceModel.getSecurityGroupName();
+		
+		AWSUtils utils = new AWSUtils();
+		String instanceId = utils.createInstance(keyPair.getKeyName(), securityGroupName, imageId);
+				
+		utils.associateIp(ipAddress, instanceId);
+		
+		u.removeInstance(instanceModel);
+		instanceModel.setInstanceID(instanceId);
+		Instance awsInstance = utils.getInstanceInformation(instanceId);
+		instanceModel.setAmiID(awsInstance.getImageId());
+		instanceModel.setElasticIP(awsInstance.getPublicIpAddress());
+		instanceModel.setInstanceID(awsInstance.getInstanceId());
+		instanceModel.setInstanceType(awsInstance.getInstanceType());
+		instanceModel.setKeyPair(keyPair);
+		instanceModel.setPublicDNSAddress(awsInstance.getPublicDnsName());
+		instanceModel.setRootInstance(true);
+		instanceModel.setSecurityGroupName(securityGroupName);		
+		
+		u.addInstance(instanceModel);			
+		return u;
+	}
+
+	private static User startupInstanceFromSnapShot(User u) {
+		u = startupinstanceFromImage(u);
+		InstanceModel instanceModel = u.getInstances().get(0);
+		String instanceId = instanceModel.getInstanceID();
+		String imageId = instanceModel.getAmiID();
+		String ipAddress = instanceModel.getElasticIP();
+		KeyPair keyPair =instanceModel.getKeyPair();
+		String securityGroupName = instanceModel.getSecurityGroupName();
+		String snapshotId = instanceModel.getSnapshotID();
+		AWSUtils utils = new AWSUtils();
+		
+		utils.stopInstance(instanceId);
+		String volumeId = utils.getVolumeIDFromInstanceID(instanceId);
+		
+		utils.detachVolumeFromInstance(volumeId, instanceId);
+		
+		String newVolumeId = utils.createVolumeFromSnapShot(snapshotId);
+		
+		utils.attachVolumeToInstance(volumeId, instanceId, "/dev/sda1");
+		utils.startInstance(instanceId);
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		return u;
+		
+	}
+
+
 
 }
